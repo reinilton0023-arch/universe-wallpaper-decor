@@ -41,3 +41,6 @@ After deployment, this URL should show JSON:
 `https://universe-wallpaper-decor.pages.dev/api/data`
 
 If it shows JSON, sync is working.
+
+
+Redeploy trigger for DB binding.
