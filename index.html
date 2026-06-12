@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#172026" />
+    <meta
+      name="description"
+      content="Universe Wallpaper & Decor scheduler for clients, jobs, and payments."
+    />
+    <title>Universe Wallpaper & Decor</title>
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="apple-touch-icon" href="./universe-logo.jpeg" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              ink: "#172026",
+              cloud: "#f5f7f9",
+              moss: "#6d8b74",
+              coral: "#d98272",
+              gold: "#c7a45d",
+              ocean: "#2d6f73"
+            },
+            boxShadow: {
+              soft: "0 18px 60px rgba(23, 32, 38, 0.08)"
+            }
+          }
+        }
+      };
+    </script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body class="bg-cloud text-ink antialiased">
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useEffect, useMemo, useState } = React;
+
+      const STORAGE_KEY = "universe-wallpaper-scheduler-v1";
+      const serviceTypes = ["Estimate", "Installation", "Removal", "Repair"];
+      const statuses = ["Scheduled", "Confirmed", "Completed", "Paid", "Canceled"];
+      const paymentMethods = ["Cash", "Check", "Zelle", "Card", "Other"];
+      const legacyStatusMap = {
+        ["Agendado"]: "Scheduled",
+        ["Confirmado"]: "Confirmed",
+        ["Conclu\u00eddo"]: "Completed",
+        ["Pago"]: "Paid",
+        ["Cancelado"]: "Canceled"
+      };
+
+      const todayISO = () => new Date().toISOString().slice(0, 10);
+      const money = (value) =>
+        Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
+
+      const initialData = { clients: [], jobs: [] };
+
+      function normalizeData(value) {
+        const parsed = value || initialData;
+        return {
+          clients: Array.isArray(parsed.clients) ? parsed.clients : [],
+          jobs: (Array.isArray(parsed.jobs) ? parsed.jobs : []).map((job) => ({
+            ...job,
+            status: legacyStatusMap[job.status] || job.status || "Scheduled"
+          }))
+        };
+      }
+
+      function mergeById(localItems, cloudItems) {
+        const merged = new Map();
+        [...cloudItems, ...localItems].forEach((item) => {
+          if (item?.id) merged.set(item.id, item);
+        });
+        return [...merged.values()];
+      }
+
+      function mergeData(localData, cloudData) {
+        return normalizeData({
+          clients: mergeById(localData.clients || [], cloudData.clients || []),
+          jobs: mergeById(localData.jobs || [], cloudData.jobs || [])
+        });
+      }
+
+      function dataChanged(a, b) {
+        return JSON.stringify(normalizeData(a)) !== JSON.stringify(normalizeData(b));
+      }
+
+      function loadData() {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          return normalizeData(saved ? JSON.parse(saved) : initialData);
+        } catch {
+          return initialData;
+        }
+      }
+
+      function Field({ label, children }) {
+        return (
+          <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+            {label}
+            {children}
+          </label>
+        );
+      }
+
+      function TextInput(props) {
+        return (
+          <input
+            {...props}
+            className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-base outline-none transition focus:border-ocean focus:ring-4 focus:ring-ocean/10"
+          />
+        );
+      }
+
+      function SelectInput(props) {
+        return (
+          <select
+            {...props}
+            className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-base outline-none transition focus:border-ocean focus:ring-4 focus:ring-ocean/10"
+          />
+        );
+      }
+
+      function TextArea(props) {
+        return (
+          <textarea
+            {...props}
+            className="min-h-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-base outline-none transition focus:border-ocean focus:ring-4 focus:ring-ocean/10"
+          />
+        );
+      }
+
+      function Button({ children, variant = "primary", className = "", ...props }) {
+        const styles = {
+          primary: "bg-ink text-white hover:bg-slate-800",
+          secondary: "bg-white text-ink border border-slate-200 hover:border-slate-300",
+          accent: "bg-ocean text-white hover:bg-ocean/90",
+          danger: "bg-white text-red-700 border border-red-200 hover:bg-red-50"
+        };
+        return (
+          <button
+            {...props}
+            className={`min-h-11 rounded-lg px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant]} ${className}`}
+          >
+            {children}
+          </button>
+        );
+      }
+
+      function Pill({ children, tone = "slate" }) {
+        const tones = {
+          slate: "bg-slate-100 text-slate-700",
+          green: "bg-emerald-100 text-emerald-800",
+          gold: "bg-amber-100 text-amber-800",
+          red: "bg-red-100 text-red-800",
+          blue: "bg-cyan-100 text-cyan-800"
+        };
+        return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${tones[tone]}`}>{children}</span>;
+      }
+
+      function statusTone(status) {
+        if (status === "Paid") return "green";
+        if (status === "Completed") return "blue";
+        if (status === "Canceled") return "red";
+        if (status === "Confirmed") return "gold";
+        return "slate";
+      }
+
+      function App() {
+        const [data, setData] = useState(loadData);
+        const [cloudReady, setCloudReady] = useState(false);
+        const [cloudLoaded, setCloudLoaded] = useState(false);
+        const [syncMessage, setSyncMessage] = useState("Saved on this device");
+        const [activeTab, setActiveTab] = useState("home");
+        const [clientForm, setClientForm] = useState({
+          name: "",
+          phone: "",
+          address: "",
+          city: "",
+          notes: "",
+          gateCode: ""
+        });
+        const [jobForm, setJobForm] = useState({
+          date: todayISO(),
+          time: "09:00",
+          serviceType: "Estimate",
+          clientId: "",
+          address: "",
+          amount: "",
+          paymentMethod: "Zelle",
+          status: "Scheduled",
+          notes: ""
+        });
+
+        useEffect(() => {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        }, [data]);
+
+        useEffect(() => {
+          let cancelled = false;
+
+          async function loadCloudData() {
+            try {
+              const response = await fetch("./api/data", { cache: "no-store" });
+              if (!response.ok) throw new Error("Cloud database is not ready");
+
+              const cloudData = normalizeData(await response.json());
+              const localData = loadData();
+              const cloudHasData = cloudData.clients.length > 0 || cloudData.jobs.length > 0;
+              const localHasData = localData.clients.length > 0 || localData.jobs.length > 0;
+
+              if (cancelled) return;
+
+              const mergedData = mergeData(localData, cloudData);
+              const mergedHasData = mergedData.clients.length > 0 || mergedData.jobs.length > 0;
+
+              if (mergedHasData) {
+                setData(mergedData);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedData));
+              }
+
+              if (mergedHasData && (dataChanged(mergedData, cloudData) || (!cloudHasData && localHasData))) {
+                await fetch("./api/data", {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(mergedData)
+                });
+              }
+
+              if (!cancelled) {
+                setCloudReady(true);
+                setSyncMessage("Cloud sync on");
+              }
+            } catch {
+              if (!cancelled) {
+                setCloudReady(false);
+                setSyncMessage("Saved on this device");
+              }
+            } finally {
+              if (!cancelled) setCloudLoaded(true);
+            }
+          }
+
+          loadCloudData();
+          return () => {
+            cancelled = true;
+          };
+        }, []);
+
+        useEffect(() => {
+          if (!cloudLoaded || !cloudReady) return;
+          setSyncMessage("Saving...");
+          const saveTimer = setTimeout(async () => {
+            try {
+              const response = await fetch("./api/data", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data)
+              });
+              if (!response.ok) throw new Error("Could not save");
+              setSyncMessage("Cloud sync on");
+            } catch {
+              setSyncMessage("Saved on this device");
+              setCloudReady(false);
+            }
+          }, 600);
+
+          return () => clearTimeout(saveTimer);
+        }, [data, cloudLoaded, cloudReady]);
+
+        useEffect(() => {
+          if (!jobForm.clientId && data.clients.length > 0) {
+            const client = data.clients[0];
+            setJobForm((current) => ({
+              ...current,
+              clientId: client.id,
+              address: `${client.address}, ${client.city}`
+            }));
+          }
+        }, [data.clients]);
+
+        const clientsById = useMemo(
+          () => Object.fromEntries(data.clients.map((client) => [client.id, client])),
+          [data.clients]
+        );
+
+        const sortedJobs = useMemo(() => {
+          return [...data.jobs].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+        }, [data.jobs]);
+
+        const todayJobs = sortedJobs.filter((job) => job.date === todayISO() && job.status !== "Canceled");
+        const weekJobs = sortedJobs.filter((job) => {
+          const date = new Date(`${job.date}T00:00:00`);
+          const now = new Date(`${todayISO()}T00:00:00`);
+          const diff = (date - now) / 86400000;
+          return diff > 0 && diff <= 7 && job.status !== "Canceled";
+        });
+
+        const finance = useMemo(() => {
+          const activeJobs = data.jobs.filter((job) => job.status !== "Canceled");
+          const received = activeJobs
+            .filter((job) => job.status === "Paid")
+            .reduce((sum, job) => sum + Number(job.amount || 0), 0);
+          const receivable = activeJobs
+            .filter((job) => job.status !== "Paid")
+            .reduce((sum, job) => sum + Number(job.amount || 0), 0);
+          const pending = activeJobs.filter((job) => job.status !== "Paid" && Number(job.amount || 0) > 0);
+          return { received, receivable, pending };
+        }, [data.jobs]);
+
+        function addClient(event) {
+          event.preventDefault();
+          if (!clientForm.name.trim()) return;
+          const client = { ...clientForm, id: crypto.randomUUID() };
+          setData((current) => ({ ...current, clients: [client, ...current.clients] }));
+          setClientForm({ name: "", phone: "", address: "", city: "", notes: "", gateCode: "" });
+        }
+
+        function deleteClient(id) {
+          setData((current) => ({
+            ...current,
+            clients: current.clients.filter((client) => client.id !== id),
+            jobs: current.jobs.filter((job) => job.clientId !== id)
+          }));
+        }
+
+        function addJob(event) {
+          event.preventDefault();
+          if (!jobForm.clientId || !jobForm.date || !jobForm.time) return;
+          setData((current) => ({
+            ...current,
+            jobs: [{ ...jobForm, id: crypto.randomUUID() }, ...current.jobs]
+          }));
+          setJobForm((current) => ({
+            ...current,
+            date: todayISO(),
+            time: "09:00",
+            amount: "",
+            status: "Scheduled",
+            notes: ""
+          }));
+        }
+
+        function updateJob(id, patch) {
+          setData((current) => ({
+            ...current,
+            jobs: current.jobs.map((job) => (job.id === id ? { ...job, ...patch } : job))
+          }));
+        }
+
+        function removeJob(id) {
+          setData((current) => ({ ...current, jobs: current.jobs.filter((job) => job.id !== id) }));
+        }
+
+        function selectClient(clientId) {
+          const client = clientsById[clientId];
+          setJobForm((current) => ({
+            ...current,
+            clientId,
+            address: client ? `${client.address}, ${client.city}` : ""
+          }));
+        }
+
+        const tabs = [
+          ["home", "Today"],
+          ["clients", "Clients"],
+          ["schedule", "Schedule"],
+          ["finance", "Finance"]
+        ];
+
+        return (
+          <div className="min-h-screen">
+            <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
+              <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src="./universe-logo.jpeg"
+                      alt="Universe Wallpaper & Decor logo"
+                      className="h-14 w-14 rounded-lg border border-slate-200 bg-white object-contain p-1 shadow-sm sm:h-16 sm:w-16"
+                    />
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-ocean">Scheduling</p>
+                      <h1 className="text-2xl font-black text-ink sm:text-3xl">Universe Wallpaper & Decor</h1>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 text-sm font-semibold text-slate-700 sm:grid-cols-2">
+                    <div className="flex items-center justify-center gap-2 rounded-lg bg-cloud px-3 py-2">
+                      <span>{todayJobs.length}</span>
+                      <span>jobs today</span>
+                    </div>
+                    <div className={`flex items-center justify-center rounded-lg px-3 py-2 ${
+                      cloudReady ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                    }`}>
+                      {syncMessage}
+                    </div>
+                  </div>
+                </div>
+                <nav className="grid grid-cols-4 gap-2 rounded-xl bg-cloud p-1">
+                  {tabs.map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => setActiveTab(id)}
+                      className={`min-h-10 rounded-lg text-sm font-bold transition ${
+                        activeTab === id ? "bg-white text-ink shadow-sm" : "text-slate-500 hover:text-ink"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+              </div>
+            </header>
+
+            <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:px-8">
+              {activeTab === "home" && (
+                <HomeScreen
+                  todayJobs={todayJobs}
+                  weekJobs={weekJobs}
+                  clientsById={clientsById}
+                  updateJob={updateJob}
+                />
+              )}
+
+              {activeTab === "clients" && (
+                <ClientsScreen
+                  clients={data.clients}
+                  clientForm={clientForm}
+                  setClientForm={setClientForm}
+                  addClient={addClient}
+                  deleteClient={deleteClient}
+                />
+              )}
+
+              {activeTab === "schedule" && (
+                <ScheduleScreen
+                  clients={data.clients}
+                  clientsById={clientsById}
+                  sortedJobs={sortedJobs}
+                  jobForm={jobForm}
+                  setJobForm={setJobForm}
+                  selectClient={selectClient}
+                  addJob={addJob}
+                  updateJob={updateJob}
+                  removeJob={removeJob}
+                />
+              )}
+
+              {activeTab === "finance" && <FinanceScreen finance={finance} clientsById={clientsById} />}
+            </main>
+          </div>
+        );
+      }
+
+      function HomeScreen({ todayJobs, weekJobs, clientsById, updateJob }) {
+        return (
+          <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+            <section className="grid gap-4">
+              <SectionTitle title="Today's jobs" subtitle="Quick actions to call, navigate, and update status." />
+              <JobList jobs={todayJobs} clientsById={clientsById} updateJob={updateJob} compact={false} />
+            </section>
+            <section className="grid gap-4">
+              <SectionTitle title="Next 7 days" subtitle="This week's schedule ordered by date and time." />
+              <JobList jobs={weekJobs} clientsById={clientsById} updateJob={updateJob} compact />
+            </section>
+          </div>
+        );
+      }
+
+      function SectionTitle({ title, subtitle }) {
+        return (
+          <div>
+            <h2 className="text-xl font-black text-ink">{title}</h2>
+            <p className="text-sm text-slate-500">{subtitle}</p>
+          </div>
+        );
+      }
+
+      function JobList({ jobs, clientsById, updateJob, compact }) {
+        if (jobs.length === 0) {
+          return (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-500">
+              No jobs found.
+            </div>
+          );
+        }
+
+        return (
+          <div className="grid gap-3">
+            {jobs.map((job) => (
+              <JobCard key={job.id} job={job} client={clientsById[job.clientId]} updateJob={updateJob} compact={compact} />
+            ))}
+          </div>
+        );
+      }
+
+      function JobCard({ job, client, updateJob, compact }) {
+        const phoneLink = client?.phone ? `tel:${client.phone.replace(/[^\d+]/g, "")}` : "#";
+        const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(job.address || client?.address || "")}`;
+        return (
+          <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <Pill tone={statusTone(job.status)}>{job.status}</Pill>
+                  <Pill tone="slate">{job.serviceType}</Pill>
+                </div>
+                <h3 className="text-lg font-black">{client?.name || "Removed client"}</h3>
+                <p className="text-sm font-semibold text-slate-500">
+                  {new Date(`${job.date}T00:00:00`).toLocaleDateString("en-US")} at {job.time}
+                </p>
+              </div>
+              <p className="text-lg font-black text-ocean">{money(job.amount)}</p>
+            </div>
+
+            {!compact && (
+              <div className="mt-3 grid gap-1 text-sm text-slate-600">
+                <p>{job.address}</p>
+                {client?.gateCode && <p>Gate code: {client.gateCode}</p>}
+                {job.notes && <p>{job.notes}</p>}
+              </div>
+            )}
+
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <a
+                href={phoneLink}
+                className="grid min-h-11 place-items-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-ink transition hover:border-slate-300"
+              >
+                Call
+              </a>
+              <a
+                href={mapsLink}
+                target="_blank"
+                className="grid min-h-11 place-items-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-ink transition hover:border-slate-300"
+              >
+                Maps
+              </a>
+              <Button
+                variant="accent"
+                disabled={job.status === "Completed" || job.status === "Paid"}
+                onClick={() => updateJob(job.id, { status: "Completed" })}
+              >
+                Complete
+              </Button>
+              <Button
+                variant="primary"
+                disabled={job.status === "Paid"}
+                onClick={() => updateJob(job.id, { status: "Paid" })}
+              >
+                Paid
+              </Button>
+            </div>
+          </article>
+        );
+      }
+
+      function ClientsScreen({ clients, clientForm, setClientForm, addClient, deleteClient }) {
+        return (
+          <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
+              <SectionTitle title="Add client" subtitle="Details used in scheduling and call shortcuts." />
+              <form onSubmit={addClient} className="mt-5 grid gap-4">
+                <Field label="Name">
+                  <TextInput value={clientForm.name} onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })} required />
+                </Field>
+                <Field label="Phone">
+                  <TextInput value={clientForm.phone} onChange={(e) => setClientForm({ ...clientForm, phone: e.target.value })} />
+                </Field>
+                <Field label="Address">
+                  <TextInput value={clientForm.address} onChange={(e) => setClientForm({ ...clientForm, address: e.target.value })} />
+                </Field>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="City">
+                    <TextInput value={clientForm.city} onChange={(e) => setClientForm({ ...clientForm, city: e.target.value })} />
+                  </Field>
+                  <Field label="Gate code">
+                    <TextInput value={clientForm.gateCode} onChange={(e) => setClientForm({ ...clientForm, gateCode: e.target.value })} />
+                  </Field>
+                </div>
+                <Field label="Notes">
+                  <TextArea value={clientForm.notes} onChange={(e) => setClientForm({ ...clientForm, notes: e.target.value })} />
+                </Field>
+                <Button type="submit">Save client</Button>
+              </form>
+            </section>
+
+            <section className="grid content-start gap-3">
+              <SectionTitle title="Clients" subtitle={`${clients.length} saved`} />
+              {clients.map((client) => (
+                <article key={client.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-black">{client.name}</h3>
+                      <p className="text-sm text-slate-600">{client.phone}</p>
+                      <p className="text-sm text-slate-600">{client.address}, {client.city}</p>
+                    </div>
+                    <Button variant="danger" onClick={() => deleteClient(client.id)}>Delete</Button>
+                  </div>
+                  {(client.gateCode || client.notes) && (
+                    <p className="mt-3 text-sm text-slate-500">
+                      {client.gateCode && `Gate: ${client.gateCode}. `}{client.notes}
+                    </p>
+                  )}
+                </article>
+              ))}
+            </section>
+          </div>
+        );
+      }
+
+      function ScheduleScreen({ clients, clientsById, sortedJobs, jobForm, setJobForm, selectClient, addJob, updateJob, removeJob }) {
+        return (
+          <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
+              <SectionTitle title="New job" subtitle="Create estimates, installations, removals, and repairs." />
+              <form onSubmit={addJob} className="mt-5 grid gap-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Date">
+                    <TextInput type="date" value={jobForm.date} onChange={(e) => setJobForm({ ...jobForm, date: e.target.value })} required />
+                  </Field>
+                  <Field label="Time">
+                    <TextInput type="time" value={jobForm.time} onChange={(e) => setJobForm({ ...jobForm, time: e.target.value })} required />
+                  </Field>
+                </div>
+                <Field label="Service type">
+                  <SelectInput value={jobForm.serviceType} onChange={(e) => setJobForm({ ...jobForm, serviceType: e.target.value })}>
+                    {serviceTypes.map((type) => <option key={type}>{type}</option>)}
+                  </SelectInput>
+                </Field>
+                <Field label="Client">
+                  <SelectInput value={jobForm.clientId} onChange={(e) => selectClient(e.target.value)} required>
+                    <option value="">Select a client</option>
+                    {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+                  </SelectInput>
+                </Field>
+                <Field label="Address">
+                  <TextInput value={jobForm.address} onChange={(e) => setJobForm({ ...jobForm, address: e.target.value })} />
+                </Field>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <Field label="Amount">
+                    <TextInput type="number" min="0" step="0.01" value={jobForm.amount} onChange={(e) => setJobForm({ ...jobForm, amount: e.target.value })} />
+                  </Field>
+                  <Field label="Payment">
+                    <SelectInput value={jobForm.paymentMethod} onChange={(e) => setJobForm({ ...jobForm, paymentMethod: e.target.value })}>
+                      {paymentMethods.map((method) => <option key={method}>{method}</option>)}
+                    </SelectInput>
+                  </Field>
+                  <Field label="Status">
+                    <SelectInput value={jobForm.status} onChange={(e) => setJobForm({ ...jobForm, status: e.target.value })}>
+                      {statuses.map((status) => <option key={status}>{status}</option>)}
+                    </SelectInput>
+                  </Field>
+                </div>
+                <Field label="Notes">
+                  <TextArea value={jobForm.notes} onChange={(e) => setJobForm({ ...jobForm, notes: e.target.value })} />
+                </Field>
+                <Button type="submit" disabled={clients.length === 0}>Save job</Button>
+              </form>
+            </section>
+
+            <section className="grid content-start gap-3">
+              <SectionTitle title="Full schedule" subtitle={`${sortedJobs.length} jobs saved`} />
+              {sortedJobs.length === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-500">
+                  Add a job to get started.
+                </div>
+              )}
+              {sortedJobs.map((job) => (
+                <article key={job.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="mb-2 flex flex-wrap gap-2">
+                        <Pill tone={statusTone(job.status)}>{job.status}</Pill>
+                        <Pill>{job.serviceType}</Pill>
+                      </div>
+                      <h3 className="font-black">{clientsById[job.clientId]?.name || "Removed client"}</h3>
+                      <p className="text-sm text-slate-600">{job.date} at {job.time}</p>
+                      <p className="text-sm text-slate-600">{job.address}</p>
+                    </div>
+                    <p className="font-black text-ocean">{money(job.amount)}</p>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {statuses.map((status) => (
+                      <Button key={status} variant="secondary" onClick={() => updateJob(job.id, { status })}>
+                        {status}
+                      </Button>
+                    ))}
+                    <Button variant="danger" onClick={() => removeJob(job.id)}>Delete</Button>
+                  </div>
+                </article>
+              ))}
+            </section>
+          </div>
+        );
+      }
+
+      function FinanceScreen({ finance, clientsById }) {
+        return (
+          <div className="grid gap-6">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Metric title="Total receivable" value={money(finance.receivable)} tone="text-coral" />
+              <Metric title="Total received" value={money(finance.received)} tone="text-ocean" />
+              <Metric title="Pending" value={finance.pending.length} tone="text-gold" />
+            </div>
+            <section className="grid gap-3">
+              <SectionTitle title="Pending payments" subtitle="Jobs with an amount that have not been marked as paid yet." />
+              {finance.pending.length === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-500">
+                  No pending payments.
+                </div>
+              )}
+              {finance.pending.map((job) => (
+                <article key={job.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-black">{clientsById[job.clientId]?.name || "Removed client"}</h3>
+                      <p className="text-sm text-slate-600">{job.serviceType} • {job.date} • {job.paymentMethod}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-black text-coral">{money(job.amount)}</p>
+                      <Pill tone={statusTone(job.status)}>{job.status}</Pill>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </section>
+          </div>
+        );
+      }
+
+      function Metric({ title, value, tone }) {
+        return (
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-soft">
+            <p className="text-sm font-bold text-slate-500">{title}</p>
+            <p className={`mt-2 text-3xl font-black ${tone}`}>{value}</p>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+      if ("serviceWorker" in navigator && window.location.protocol === "https:") {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./sw.js").catch(() => {});
+        });
+      }
+    </script>
+  </body>
+</html>

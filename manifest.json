@@ -1,0 +1,25 @@
+{
+  "name": "Universe Wallpaper & Decor",
+  "short_name": "Universe",
+  "description": "Scheduler for Universe Wallpaper & Decor clients, jobs, and payments.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f7f9",
+  "theme_color": "#172026",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "./universe-logo.jpeg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
