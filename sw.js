@@ -1,4 +1,4 @@
-const CACHE_NAME = "universe-wallpaper-decor-v5";
+const CACHE_NAME = "universe-wallpaper-decor-v6";
 const APP_FILES = [
   "./",
   "./index.html",
@@ -36,7 +36,7 @@ self.addEventListener("fetch", (event) => {
 
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: "no-store" })
         .then((response) => {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put("./index.html", copy));
