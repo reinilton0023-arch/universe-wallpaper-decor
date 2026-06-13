@@ -2,6 +2,7 @@ const CACHE_NAME = "universe-wallpaper-decor-v6";
 const APP_FILES = [
   "./",
   "./index.html",
+  "./refresh.html",
   "./manifest.json",
   "./universe-logo.jpeg",
   "./apple-touch-icon.png",

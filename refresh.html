@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Updating Universe</title>
+    <style>
+      body {
+        align-items: center;
+        background: #f5f7f9;
+        color: #172026;
+        display: flex;
+        font-family: Arial, sans-serif;
+        justify-content: center;
+        margin: 0;
+        min-height: 100vh;
+        padding: 24px;
+        text-align: center;
+      }
+
+      main {
+        max-width: 360px;
+      }
+
+      img {
+        display: block;
+        margin: 0 auto 20px;
+        max-width: 180px;
+        width: 58%;
+      }
+
+      h1 {
+        font-size: 24px;
+        margin: 0 0 10px;
+      }
+
+      p {
+        color: #475569;
+        font-size: 16px;
+        line-height: 1.5;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="./app-icon-512.png" alt="Universe Wallpaper & Decor" />
+      <h1>Updating app...</h1>
+      <p>Please wait. The newest version will open automatically.</p>
+    </main>
+
+    <script>
+      async function clearOldApp() {
+        try {
+          if ("serviceWorker" in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(registrations.map((registration) => registration.unregister()));
+          }
+
+          if ("caches" in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((key) => caches.delete(key)));
+          }
+        } finally {
+          window.location.replace("./?fresh=" + Date.now());
+        }
+      }
+
+      clearOldApp();
+    </script>
+  </body>
+</html>
