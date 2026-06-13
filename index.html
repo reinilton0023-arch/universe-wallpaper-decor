@@ -176,6 +176,7 @@
         const [cloudLoaded, setCloudLoaded] = useState(false);
         const [syncMessage, setSyncMessage] = useState("Saved on this device");
         const [activeTab, setActiveTab] = useState("home");
+        const [editingJobId, setEditingJobId] = useState("");
         const [clientForm, setClientForm] = useState({
           name: "",
           phone: "",
@@ -328,13 +329,8 @@
           }));
         }
 
-        function addJob(event) {
-          event.preventDefault();
-          if (!jobForm.clientId || !jobForm.date || !jobForm.time) return;
-          setData((current) => ({
-            ...current,
-            jobs: [{ ...jobForm, id: crypto.randomUUID() }, ...current.jobs]
-          }));
+        function resetJobForm() {
+          setEditingJobId("");
           setJobForm((current) => ({
             ...current,
             date: todayISO(),
@@ -343,6 +339,25 @@
             status: "Scheduled",
             notes: ""
           }));
+        }
+
+        function addJob(event) {
+          event.preventDefault();
+          if (!jobForm.clientId || !jobForm.date || !jobForm.time) return;
+
+          if (editingJobId) {
+            setData((current) => ({
+              ...current,
+              jobs: current.jobs.map((job) => (job.id === editingJobId ? { ...jobForm, id: editingJobId } : job))
+            }));
+          } else {
+            setData((current) => ({
+              ...current,
+              jobs: [{ ...jobForm, id: crypto.randomUUID() }, ...current.jobs]
+            }));
+          }
+
+          resetJobForm();
         }
 
         function updateJob(id, patch) {
@@ -354,6 +369,23 @@
 
         function removeJob(id) {
           setData((current) => ({ ...current, jobs: current.jobs.filter((job) => job.id !== id) }));
+          if (editingJobId === id) resetJobForm();
+        }
+
+        function editJob(job) {
+          setEditingJobId(job.id);
+          setJobForm({
+            date: job.date || todayISO(),
+            time: job.time || "09:00",
+            serviceType: job.serviceType || "Estimate",
+            clientId: job.clientId || "",
+            address: job.address || "",
+            amount: job.amount || "",
+            paymentMethod: job.paymentMethod || "Zelle",
+            status: job.status || "Scheduled",
+            notes: job.notes || ""
+          });
+          setActiveTab("schedule");
         }
 
         function selectClient(clientId) {
@@ -447,6 +479,9 @@
                   addJob={addJob}
                   updateJob={updateJob}
                   removeJob={removeJob}
+                  editJob={editJob}
+                  editingJobId={editingJobId}
+                  cancelJobEdit={resetJobForm}
                 />
               )}
 
@@ -612,11 +647,14 @@
         );
       }
 
-      function ScheduleScreen({ clients, clientsById, sortedJobs, jobForm, setJobForm, selectClient, addJob, updateJob, removeJob }) {
+      function ScheduleScreen({ clients, clientsById, sortedJobs, jobForm, setJobForm, selectClient, addJob, updateJob, removeJob, editJob, editingJobId, cancelJobEdit }) {
         return (
           <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
-              <SectionTitle title="New job" subtitle="Create estimates, installations, removals, and repairs." />
+              <SectionTitle
+                title={editingJobId ? "Edit job" : "New job"}
+                subtitle={editingJobId ? "Update this scheduled job and save your changes." : "Create estimates, installations, removals, and repairs."}
+              />
               <form onSubmit={addJob} className="mt-5 grid gap-4">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Date">
@@ -658,7 +696,14 @@
                 <Field label="Notes">
                   <TextArea value={jobForm.notes} onChange={(e) => setJobForm({ ...jobForm, notes: e.target.value })} />
                 </Field>
-                <Button type="submit" disabled={clients.length === 0}>Save job</Button>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button type="submit" disabled={clients.length === 0}>{editingJobId ? "Save changes" : "Save job"}</Button>
+                  {editingJobId && (
+                    <Button type="button" variant="secondary" onClick={cancelJobEdit}>
+                      Cancel edit
+                    </Button>
+                  )}
+                </div>
               </form>
             </section>
 
@@ -670,7 +715,7 @@
                 </div>
               )}
               {sortedJobs.map((job) => (
-                <article key={job.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
+                <article key={job.id} className={`rounded-xl border bg-white p-4 shadow-soft ${editingJobId === job.id ? "border-ocean ring-4 ring-ocean/10" : "border-slate-200"}`}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="mb-2 flex flex-wrap gap-2">
@@ -684,6 +729,7 @@
                     <p className="font-black text-ocean">{money(job.amount)}</p>
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <Button variant="accent" onClick={() => editJob(job)}>Edit</Button>
                     {statuses.map((status) => (
                       <Button key={status} variant="secondary" onClick={() => updateJob(job.id, { status })}>
                         {status}
