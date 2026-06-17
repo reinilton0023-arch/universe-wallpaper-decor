@@ -19,6 +19,7 @@
     <link rel="icon" type="image/png" sizes="512x512" href="./app-icon-512.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+      window.tailwind = window.tailwind || {};
       tailwind.config = {
         theme: {
           extend: {
@@ -42,9 +43,17 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   </head>
   <body class="bg-cloud text-ink antialiased">
-    <div id="root"></div>
+    <div id="root">
+      <div style="display:grid;min-height:100vh;place-items:center;padding:24px;font-family:Arial,sans-serif;text-align:center;color:#172026;background:#f5f7f9">
+        <div>
+          <img src="./app-icon-192.png" alt="Universe Wallpaper & Decor" style="width:96px;height:96px;object-fit:contain;margin-bottom:16px" />
+          <h1 style="font-size:24px;margin:0 0 8px">Universe Wallpaper & Decor</h1>
+          <p style="margin:0;color:#64748b">Loading app...</p>
+        </div>
+      </div>
+    </div>
 
-    <script type="text/babel">
+    <script id="app-code" type="text/plain">
       const { useEffect, useMemo, useState } = React;
 
       const STORAGE_KEY = "universe-wallpaper-scheduler-v1";
@@ -898,6 +907,66 @@
           }).catch(() => {});
         });
       }
+    </script>
+    <script>
+      (function () {
+        var root = document.getElementById("root");
+        var cdns = {
+          React: [
+            "https://unpkg.com/react@18/umd/react.development.js",
+            "https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js"
+          ],
+          ReactDOM: [
+            "https://unpkg.com/react-dom@18/umd/react-dom.development.js",
+            "https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"
+          ],
+          Babel: [
+            "https://unpkg.com/@babel/standalone/babel.min.js",
+            "https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"
+          ]
+        };
+
+        function showError() {
+          root.innerHTML =
+            '<div style="display:grid;min-height:100vh;place-items:center;padding:24px;font-family:Arial,sans-serif;text-align:center;color:#172026;background:#f5f7f9">' +
+            '<div style="max-width:360px"><img src="./app-icon-192.png" alt="Universe" style="width:96px;height:96px;object-fit:contain;margin-bottom:16px" />' +
+            '<h1 style="font-size:24px;margin:0 0 8px">Update needed</h1>' +
+            '<p style="margin:0 0 16px;color:#64748b;line-height:1.45">The app could not load completely. Tap the button below to refresh the app.</p>' +
+            '<a href="./refresh.html" style="display:inline-grid;min-height:44px;place-items:center;border-radius:8px;background:#172026;color:white;padding:0 18px;text-decoration:none;font-weight:700">Refresh app</a></div></div>';
+        }
+
+        function loadScript(src) {
+          return new Promise(function (resolve, reject) {
+            var script = document.createElement("script");
+            script.src = src;
+            script.async = false;
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
+        }
+
+        function loadAny(urls, globalName) {
+          if (window[globalName]) return Promise.resolve();
+          return urls.reduce(function (promise, url) {
+            return promise.catch(function () {
+              return loadScript(url).then(function () {
+                if (!window[globalName]) throw new Error(globalName + " not ready");
+              });
+            });
+          }, Promise.reject());
+        }
+
+        loadAny(cdns.React, "React")
+          .then(function () { return loadAny(cdns.ReactDOM, "ReactDOM"); })
+          .then(function () { return loadAny(cdns.Babel, "Babel"); })
+          .then(function () {
+            var source = document.getElementById("app-code").textContent;
+            var compiled = Babel.transform(source, { presets: ["react"] }).code;
+            new Function(compiled)();
+          })
+          .catch(showError);
+      })();
     </script>
   </body>
 </html>
