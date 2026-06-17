@@ -38,9 +38,6 @@
         }
       };
     </script>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   </head>
   <body class="bg-cloud text-ink antialiased">
     <div id="root">
@@ -962,7 +959,7 @@
           .then(function () { return loadAny(cdns.Babel, "Babel"); })
           .then(function () {
             var source = document.getElementById("app-code").textContent;
-            var compiled = Babel.transform(source, { presets: ["react"] }).code;
+            var compiled = Babel.transform(source, { presets: [["react", { runtime: "classic" }]] }).code;
             new Function(compiled)();
           })
           .catch(showError);
