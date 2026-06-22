@@ -505,6 +505,9 @@
             notes: job.notes || ""
           });
           setActiveTab("schedule");
+          setTimeout(() => {
+            document.getElementById("job-form-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 100);
         }
 
         function selectClient(clientId) {
@@ -661,7 +664,7 @@
       function WeekScreen({ title = "Week", subtitle = "Monday to Sunday", weekStart, weekEnd, weekDays, jobs, weeklyFinance, clients, clientsById, setSelectedWeekStart, selectedClientFilter, setSelectedClientFilter, editJob, updateJob, showMetrics = true }) {
         return (
           <div className="grid gap-6">
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
+            <section id="job-form-section" className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
               <div className="grid gap-4">
                 <SectionTitle
                   title={title}
