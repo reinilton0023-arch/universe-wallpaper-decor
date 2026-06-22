@@ -232,8 +232,11 @@
         const [cloudReady, setCloudReady] = useState(false);
         const [cloudLoaded, setCloudLoaded] = useState(false);
         const [syncMessage, setSyncMessage] = useState("Saved on this device");
-        const [activeTab, setActiveTab] = useState("home");
+        const [activeTab, setActiveTab] = useState("schedule");
         const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeekMonday(todayISO()));
+        const [financeStart, setFinanceStart] = useState(() => startOfWeekMonday(todayISO()));
+        const [financeEnd, setFinanceEnd] = useState(() => addDays(startOfWeekMonday(todayISO()), 6));
+        const [financeFilter, setFinanceFilter] = useState("all");
         const [editingJobId, setEditingJobId] = useState("");
         const [clientForm, setClientForm] = useState({
           name: "",
@@ -379,6 +382,27 @@
           return { total, received, pending };
         }, [selectedWeekJobs]);
 
+        const financeRangeJobs = sortedJobs.filter((job) => (
+          job.status !== "Canceled" &&
+          job.date >= financeStart &&
+          job.date <= financeEnd
+        ));
+        const filteredFinanceJobs = financeRangeJobs.filter((job) => {
+          if (financeFilter === "paid") return job.status === "Paid";
+          if (financeFilter === "notPaid") return job.status !== "Paid";
+          return true;
+        });
+        const financeRange = useMemo(() => {
+          const total = financeRangeJobs.reduce((sum, job) => sum + Number(job.amount || 0), 0);
+          const received = financeRangeJobs
+            .filter((job) => job.status === "Paid")
+            .reduce((sum, job) => sum + Number(job.amount || 0), 0);
+          const pending = financeRangeJobs
+            .filter((job) => job.status !== "Paid")
+            .reduce((sum, job) => sum + Number(job.amount || 0), 0);
+          return { total, received, pending };
+        }, [financeRangeJobs]);
+
         const finance = useMemo(() => {
           const activeJobs = data.jobs.filter((job) => job.status !== "Canceled");
           const received = activeJobs
@@ -490,10 +514,8 @@
         }
 
         const tabs = [
-          ["home", "Today"],
           ["schedule", "Schedule"],
-          ["finance", "Finance"],
-          ["archive", "Done"]
+          ["finance", "Finance"]
         ];
 
         return (
@@ -514,8 +536,8 @@
                   </div>
                   <div className="grid gap-2 text-sm font-semibold text-slate-700 sm:grid-cols-2">
                     <div className="flex items-center justify-center gap-2 rounded-lg bg-cloud px-3 py-2">
-                      <span>{todayJobs.length}</span>
-                      <span>jobs today</span>
+                      <span>{activeScheduleJobs.length}</span>
+                      <span>active jobs</span>
                     </div>
                     <div className={`flex items-center justify-center rounded-lg px-3 py-2 ${
                       cloudReady ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
@@ -524,7 +546,7 @@
                     </div>
                   </div>
                 </div>
-                <nav className="grid grid-cols-4 gap-1 rounded-xl bg-cloud p-1 sm:gap-2">
+                <nav className="grid grid-cols-2 gap-1 rounded-xl bg-cloud p-1 sm:gap-2">
                   {tabs.map(([id, label]) => (
                     <button
                       key={id}
@@ -541,16 +563,6 @@
             </header>
 
             <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:px-8">
-              {activeTab === "home" && (
-                <HomeScreen
-                  todayJobs={todayJobs}
-                  weekJobs={weekJobs}
-                  clientsById={clientsById}
-                  updateJob={updateJob}
-                  editJob={editJob}
-                />
-              )}
-
               {activeTab === "schedule" && (
                 <div className="grid gap-6">
                   <WeekScreen
@@ -591,22 +603,15 @@
 
               {activeTab === "finance" && (
                 <FinanceWeekScreen
-                  weekStart={selectedWeekStart}
-                  weekEnd={weekEnd}
-                  jobs={selectedWeekJobs}
-                  weeklyFinance={weeklyFinance}
+                  financeStart={financeStart}
+                  financeEnd={financeEnd}
+                  setFinanceStart={setFinanceStart}
+                  setFinanceEnd={setFinanceEnd}
+                  financeFilter={financeFilter}
+                  setFinanceFilter={setFinanceFilter}
+                  jobs={filteredFinanceJobs}
+                  financeRange={financeRange}
                   clientsById={clientsById}
-                  setSelectedWeekStart={setSelectedWeekStart}
-                />
-              )}
-
-              {activeTab === "archive" && (
-                <ArchiveScreen
-                  archivedJobs={archivedJobs}
-                  clientsById={clientsById}
-                  updateJob={updateJob}
-                  removeJob={removeJob}
-                  editJob={editJob}
                 />
               )}
             </main>
@@ -715,59 +720,70 @@
         );
       }
 
-      function FinanceWeekScreen({ weekStart, weekEnd, jobs, weeklyFinance, clientsById, setSelectedWeekStart }) {
-        const paidJobs = jobs.filter((job) => job.status === "Paid");
-        const pendingJobs = jobs.filter((job) => job.status !== "Paid");
-
+      function FinanceWeekScreen({ financeStart, financeEnd, setFinanceStart, setFinanceEnd, financeFilter, setFinanceFilter, jobs, financeRange, clientsById }) {
         return (
           <div className="grid gap-6">
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="grid gap-4">
                 <SectionTitle
                   title="Finance"
-                  subtitle={`${formatShortDate(weekStart)} - ${formatShortDate(weekEnd)} (Monday to Sunday)`}
+                  subtitle={`${formatShortDate(financeStart)} - ${formatShortDate(financeEnd)}`}
                 />
+                <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                  <Field label="Start date">
+                    <TextInput type="date" value={financeStart} onChange={(event) => setFinanceStart(event.target.value)} />
+                  </Field>
+                  <Field label="End date">
+                    <TextInput type="date" value={financeEnd} onChange={(event) => setFinanceEnd(event.target.value)} />
+                  </Field>
+                  <div className="grid content-end">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        const start = startOfWeekMonday(todayISO());
+                        setFinanceStart(start);
+                        setFinanceEnd(addDays(start, 6));
+                      }}
+                    >
+                      This week
+                    </Button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-3 gap-2">
-                  <Button type="button" variant="secondary" onClick={() => setSelectedWeekStart(addDays(weekStart, -7))}>
-                    Previous
-                  </Button>
-                  <Button type="button" variant="secondary" onClick={() => setSelectedWeekStart(startOfWeekMonday(todayISO()))}>
-                    This week
-                  </Button>
-                  <Button type="button" variant="secondary" onClick={() => setSelectedWeekStart(addDays(weekStart, 7))}>
-                    Next
-                  </Button>
+                  {[
+                    ["all", "All"],
+                    ["paid", "Paid"],
+                    ["notPaid", "Not paid"]
+                  ].map(([id, label]) => (
+                    <Button
+                      key={id}
+                      type="button"
+                      variant={financeFilter === id ? "primary" : "secondary"}
+                      onClick={() => setFinanceFilter(id)}
+                    >
+                      {label}
+                    </Button>
+                  ))}
                 </div>
               </div>
             </section>
 
             <div className="grid gap-4 sm:grid-cols-4">
               <Metric title="Jobs" value={jobs.length} tone="text-ink" />
-              <Metric title="Week total" value={money(weeklyFinance.total)} tone="text-ocean" />
-              <Metric title="Received" value={money(weeklyFinance.received)} tone="text-moss" />
-              <Metric title="Pending" value={money(weeklyFinance.pending)} tone="text-coral" />
+              <Metric title="Total" value={money(financeRange.total)} tone="text-ocean" />
+              <Metric title="Paid" value={money(financeRange.received)} tone="text-moss" />
+              <Metric title="Not paid" value={money(financeRange.pending)} tone="text-coral" />
             </div>
 
             <section className="grid gap-3">
-              <SectionTitle title="Pending" subtitle={`${pendingJobs.length} jobs not paid yet`} />
-              {pendingJobs.length === 0 && (
+              <SectionTitle title="Jobs" subtitle={`${jobs.length} jobs in this date range`} />
+              {jobs.length === 0 && (
                 <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-500">
-                  No pending jobs this week.
+                  No jobs found for this filter.
                 </div>
               )}
-              {pendingJobs.map((job) => (
-                <FinanceJobRow key={job.id} job={job} client={clientsById[job.clientId]} />
-              ))}
-            </section>
-
-            <section className="grid gap-3">
-              <SectionTitle title="Paid" subtitle={`${paidJobs.length} paid jobs this week`} />
-              {paidJobs.length === 0 && (
-                <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-500">
-                  No paid jobs this week.
-                </div>
-              )}
-              {paidJobs.map((job) => (
+              {jobs.map((job) => (
                 <FinanceJobRow key={job.id} job={job} client={clientsById[job.clientId]} />
               ))}
             </section>
