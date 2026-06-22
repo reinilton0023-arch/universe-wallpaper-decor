@@ -72,6 +72,40 @@
         const day = String(today.getDate()).padStart(2, "0");
         return `${year}-${month}-${day}`;
       };
+
+      function parseISODate(dateText) {
+        return new Date(`${dateText}T00:00:00`);
+      }
+
+      function dateToISO(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      }
+
+      function addDays(dateText, days) {
+        const date = parseISODate(dateText);
+        date.setDate(date.getDate() + days);
+        return dateToISO(date);
+      }
+
+      function startOfWeekMonday(dateText) {
+        const date = parseISODate(dateText);
+        const day = date.getDay();
+        const offset = day === 0 ? -6 : 1 - day;
+        date.setDate(date.getDate() + offset);
+        return dateToISO(date);
+      }
+
+      function formatShortDate(dateText) {
+        return parseISODate(dateText).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      }
+
+      function formatLongDate(dateText) {
+        return parseISODate(dateText).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+      }
+
       const money = (value) =>
         Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
 
@@ -199,6 +233,7 @@
         const [cloudLoaded, setCloudLoaded] = useState(false);
         const [syncMessage, setSyncMessage] = useState("Saved on this device");
         const [activeTab, setActiveTab] = useState("home");
+        const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeekMonday(todayISO()));
         const [editingJobId, setEditingJobId] = useState("");
         const [clientForm, setClientForm] = useState({
           name: "",
@@ -320,11 +355,29 @@
         const archivedJobs = sortedJobs.filter(isArchivedJob);
         const todayJobs = activeScheduleJobs.filter((job) => job.date === todayISO());
         const weekJobs = activeScheduleJobs.filter((job) => {
-          const date = new Date(`${job.date}T00:00:00`);
-          const now = new Date(`${todayISO()}T00:00:00`);
+          const date = parseISODate(job.date);
+          const now = parseISODate(todayISO());
           const diff = (date - now) / 86400000;
           return diff > 0 && diff <= 7;
         });
+
+        const weekEnd = addDays(selectedWeekStart, 6);
+        const weekDays = Array.from({ length: 7 }, (_, index) => addDays(selectedWeekStart, index));
+        const selectedWeekJobs = sortedJobs.filter((job) => (
+          job.status !== "Canceled" &&
+          job.date >= selectedWeekStart &&
+          job.date <= weekEnd
+        ));
+        const weeklyFinance = useMemo(() => {
+          const total = selectedWeekJobs.reduce((sum, job) => sum + Number(job.amount || 0), 0);
+          const received = selectedWeekJobs
+            .filter((job) => job.status === "Paid")
+            .reduce((sum, job) => sum + Number(job.amount || 0), 0);
+          const pending = selectedWeekJobs
+            .filter((job) => job.status !== "Paid")
+            .reduce((sum, job) => sum + Number(job.amount || 0), 0);
+          return { total, received, pending };
+        }, [selectedWeekJobs]);
 
         const finance = useMemo(() => {
           const activeJobs = data.jobs.filter((job) => job.status !== "Canceled");
@@ -438,6 +491,7 @@
 
         const tabs = [
           ["home", "Today"],
+          ["week", "Week"],
           ["clients", "Clients"],
           ["schedule", "Schedule"],
           ["archive", "Archive"],
@@ -472,7 +526,7 @@
                     </div>
                   </div>
                 </div>
-                <nav className="grid grid-cols-5 gap-1 rounded-xl bg-cloud p-1 sm:gap-2">
+                <nav className="grid grid-cols-3 gap-1 rounded-xl bg-cloud p-1 sm:grid-cols-6 sm:gap-2">
                   {tabs.map(([id, label]) => (
                     <button
                       key={id}
@@ -505,6 +559,18 @@
                   setClientForm={setClientForm}
                   addClient={addClient}
                   deleteClient={deleteClient}
+                />
+              )}
+
+              {activeTab === "week" && (
+                <WeekScreen
+                  weekStart={selectedWeekStart}
+                  weekEnd={weekEnd}
+                  weekDays={weekDays}
+                  jobs={selectedWeekJobs}
+                  weeklyFinance={weeklyFinance}
+                  clientsById={clientsById}
+                  setSelectedWeekStart={setSelectedWeekStart}
                 />
               )}
 
@@ -551,6 +617,83 @@
             <section className="grid gap-4">
               <SectionTitle title="Next 7 days" subtitle="This week's schedule ordered by date and time." />
               <JobList jobs={weekJobs} clientsById={clientsById} updateJob={updateJob} compact />
+            </section>
+          </div>
+        );
+      }
+
+      function WeekScreen({ weekStart, weekEnd, weekDays, jobs, weeklyFinance, clientsById, setSelectedWeekStart }) {
+        return (
+          <div className="grid gap-6">
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <SectionTitle
+                  title="Weekly schedule"
+                  subtitle={`${formatShortDate(weekStart)} - ${formatShortDate(weekEnd)} (Monday to Sunday)`}
+                />
+                <div className="grid grid-cols-3 gap-2">
+                  <Button type="button" variant="secondary" onClick={() => setSelectedWeekStart(addDays(weekStart, -7))}>
+                    Previous
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => setSelectedWeekStart(startOfWeekMonday(todayISO()))}>
+                    This week
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => setSelectedWeekStart(addDays(weekStart, 7))}>
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </section>
+
+            <div className="grid gap-4 sm:grid-cols-4">
+              <Metric title="Jobs" value={jobs.length} tone="text-ink" />
+              <Metric title="Week total" value={money(weeklyFinance.total)} tone="text-ocean" />
+              <Metric title="Received" value={money(weeklyFinance.received)} tone="text-moss" />
+              <Metric title="Pending" value={money(weeklyFinance.pending)} tone="text-coral" />
+            </div>
+
+            <section className="grid gap-3">
+              {weekDays.map((day) => {
+                const dayJobs = jobs.filter((job) => job.date === day);
+                const dayTotal = dayJobs.reduce((sum, job) => sum + Number(job.amount || 0), 0);
+                return (
+                  <article key={day} className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-black">{formatLongDate(day)}</h3>
+                        <p className="text-sm text-slate-500">{dayJobs.length} jobs</p>
+                      </div>
+                      <p className="text-lg font-black text-ocean">{money(dayTotal)}</p>
+                    </div>
+
+                    {dayJobs.length === 0 && (
+                      <p className="mt-3 rounded-lg border border-dashed border-slate-200 bg-cloud p-3 text-sm text-slate-500">
+                        No jobs scheduled.
+                      </p>
+                    )}
+
+                    {dayJobs.length > 0 && (
+                      <div className="mt-4 grid gap-3">
+                        {dayJobs.map((job) => (
+                          <div key={job.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <div className="mb-2 flex flex-wrap gap-2">
+                                  <Pill tone={statusTone(job.status)}>{job.status}</Pill>
+                                  <Pill>{job.serviceType}</Pill>
+                                </div>
+                                <h4 className="font-black">{clientsById[job.clientId]?.name || "Removed client"}</h4>
+                                <p className="text-sm text-slate-600">{job.time} - {job.address}</p>
+                              </div>
+                              <p className="font-black text-ocean">{money(job.amount)}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
             </section>
           </div>
         );
