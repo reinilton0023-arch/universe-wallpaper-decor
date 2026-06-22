@@ -1,4 +1,4 @@
-const CACHE_NAME = "universe-wallpaper-decor-v16";
+const CACHE_NAME = "universe-wallpaper-decor-v17";
 const APP_FILES = [
   "./",
   "./index.html",
