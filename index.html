@@ -237,6 +237,7 @@
         const [financeStart, setFinanceStart] = useState(() => startOfWeekMonday(todayISO()));
         const [financeEnd, setFinanceEnd] = useState(() => addDays(startOfWeekMonday(todayISO()), 6));
         const [financeFilter, setFinanceFilter] = useState("all");
+        const [selectedClientFilter, setSelectedClientFilter] = useState("");
         const [editingJobId, setEditingJobId] = useState("");
         const [clientForm, setClientForm] = useState({
           name: "",
@@ -369,7 +370,8 @@
         const selectedWeekJobs = sortedJobs.filter((job) => (
           job.status !== "Canceled" &&
           job.date >= selectedWeekStart &&
-          job.date <= weekEnd
+          job.date <= weekEnd &&
+          (!selectedClientFilter || job.clientId === selectedClientFilter)
         ));
         const weeklyFinance = useMemo(() => {
           const total = selectedWeekJobs.reduce((sum, job) => sum + Number(job.amount || 0), 0);
@@ -385,7 +387,8 @@
         const financeRangeJobs = sortedJobs.filter((job) => (
           job.status !== "Canceled" &&
           job.date >= financeStart &&
-          job.date <= financeEnd
+          job.date <= financeEnd &&
+          (!selectedClientFilter || job.clientId === selectedClientFilter)
         ));
         const filteredFinanceJobs = financeRangeJobs.filter((job) => {
           if (financeFilter === "paid") return job.status === "Paid";
@@ -572,8 +575,13 @@
                     weekEnd={weekEnd}
                     weekDays={weekDays}
                     jobs={selectedWeekJobs}
+                    clients={data.clients}
                     clientsById={clientsById}
                     setSelectedWeekStart={setSelectedWeekStart}
+                    selectedClientFilter={selectedClientFilter}
+                    setSelectedClientFilter={setSelectedClientFilter}
+                    editJob={editJob}
+                    updateJob={updateJob}
                     showMetrics={false}
                   />
                   <ScheduleScreen
@@ -611,7 +619,12 @@
                   setFinanceFilter={setFinanceFilter}
                   jobs={filteredFinanceJobs}
                   financeRange={financeRange}
+                  clients={data.clients}
                   clientsById={clientsById}
+                  selectedClientFilter={selectedClientFilter}
+                  setSelectedClientFilter={setSelectedClientFilter}
+                  editJob={editJob}
+                  updateJob={updateJob}
                 />
               )}
             </main>
@@ -634,11 +647,11 @@
         );
       }
 
-      function WeekScreen({ title = "Week", subtitle = "Monday to Sunday", weekStart, weekEnd, weekDays, jobs, weeklyFinance, clientsById, setSelectedWeekStart, showMetrics = true }) {
+      function WeekScreen({ title = "Week", subtitle = "Monday to Sunday", weekStart, weekEnd, weekDays, jobs, weeklyFinance, clients, clientsById, setSelectedWeekStart, selectedClientFilter, setSelectedClientFilter, editJob, updateJob, showMetrics = true }) {
         return (
           <div className="grid gap-6">
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="grid gap-4">
                 <SectionTitle
                   title={title}
                   subtitle={`${formatShortDate(weekStart)} - ${formatShortDate(weekEnd)} (${subtitle})`}
@@ -654,6 +667,7 @@
                     Next
                   </Button>
                 </div>
+                <ClientFilter clients={clients} value={selectedClientFilter} onChange={setSelectedClientFilter} />
               </div>
             </section>
 
@@ -699,6 +713,11 @@
                               </div>
                               <p className="font-black text-ocean">{money(job.amount)}</p>
                             </div>
+                            <div className="mt-3 grid grid-cols-3 gap-2">
+                              <Button variant="secondary" onClick={() => editJob(job)}>Edit</Button>
+                              <Button variant="primary" onClick={() => updateJob(job.id, { status: "Paid", archived: true })}>Paid</Button>
+                              <Button variant="secondary" onClick={() => updateJob(job.id, { status: "Scheduled", archived: false })}>Not paid</Button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -720,7 +739,20 @@
         );
       }
 
-      function FinanceWeekScreen({ financeStart, financeEnd, setFinanceStart, setFinanceEnd, financeFilter, setFinanceFilter, jobs, financeRange, clientsById }) {
+      function ClientFilter({ clients, value, onChange }) {
+        return (
+          <Field label="Client">
+            <SelectInput value={value} onChange={(event) => onChange(event.target.value)}>
+              <option value="">All clients</option>
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>{client.name}</option>
+              ))}
+            </SelectInput>
+          </Field>
+        );
+      }
+
+      function FinanceWeekScreen({ financeStart, financeEnd, setFinanceStart, setFinanceEnd, financeFilter, setFinanceFilter, jobs, financeRange, clients, clientsById, selectedClientFilter, setSelectedClientFilter, editJob, updateJob }) {
         return (
           <div className="grid gap-6">
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
@@ -750,6 +782,7 @@
                     </Button>
                   </div>
                 </div>
+                <ClientFilter clients={clients} value={selectedClientFilter} onChange={setSelectedClientFilter} />
                 <div className="grid grid-cols-3 gap-2">
                   {[
                     ["all", "All"],
@@ -784,14 +817,14 @@
                 </div>
               )}
               {jobs.map((job) => (
-                <FinanceJobRow key={job.id} job={job} client={clientsById[job.clientId]} />
+                <FinanceJobRow key={job.id} job={job} client={clientsById[job.clientId]} editJob={editJob} updateJob={updateJob} />
               ))}
             </section>
           </div>
         );
       }
 
-      function FinanceJobRow({ job, client }) {
+      function FinanceJobRow({ job, client, editJob, updateJob }) {
         return (
           <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-soft">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -804,6 +837,11 @@
                 <p className="text-sm text-slate-600">{job.date} at {job.time}</p>
               </div>
               <p className="text-lg font-black text-ocean">{money(job.amount)}</p>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <Button variant="secondary" onClick={() => editJob(job)}>Edit</Button>
+              <Button variant="primary" onClick={() => updateJob(job.id, { status: "Paid", archived: true })}>Paid</Button>
+              <Button variant="secondary" onClick={() => updateJob(job.id, { status: "Scheduled", archived: false })}>Not paid</Button>
             </div>
           </article>
         );
