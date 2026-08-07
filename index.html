@@ -73,6 +73,12 @@
         return `${year}-${month}-${day}`;
       };
 
+      const dashboardDateISO = () => {
+        const now = new Date();
+        const calendarDate = todayISO();
+        return now.getHours() >= 20 ? addDays(calendarDate, 1) : calendarDate;
+      };
+
       function parseISODate(dateText) {
         return new Date(`${dateText}T00:00:00`);
       }
@@ -422,7 +428,8 @@
 
         const activeScheduleJobs = sortedJobs.filter((job) => !isArchivedJob(job) && job.status !== "Canceled");
         const archivedJobs = sortedJobs.filter(isArchivedJob);
-        const todayJobs = activeScheduleJobs.filter((job) => job.date === todayISO());
+        const dashboardDate = dashboardDateISO();
+        const todayJobs = activeScheduleJobs.filter((job) => job.date === dashboardDate);
 
         const weekEnd = addDays(selectedWeekStart, 6);
         const weekDays = Array.from({ length: 7 }, (_, index) => addDays(selectedWeekStart, index));
@@ -652,6 +659,7 @@
               {activeTab === "home" && (
                 <HomeScreen
                   todayJobs={todayJobs}
+                  dashboardDate={dashboardDate}
                   clientsById={clientsById}
                   updateJob={updateJob}
                   editJob={editJob}
@@ -730,10 +738,10 @@
         );
       }
 
-      function HomeScreen({ todayJobs, clientsById, updateJob, editJob }) {
+      function HomeScreen({ todayJobs, dashboardDate, clientsById, updateJob, editJob }) {
         return (
           <div className="grid gap-4">
-            <SectionTitle title="Today's Jobs" subtitle={`${formatLongDate(todayISO())} · ${todayJobs.length} job${todayJobs.length === 1 ? "" : "s"}`} />
+            <SectionTitle title="Today's Jobs" subtitle={`${formatLongDate(dashboardDate)} · ${todayJobs.length} job${todayJobs.length === 1 ? "" : "s"} · switches at 8:00 PM`} />
             <JobList jobs={todayJobs} clientsById={clientsById} updateJob={updateJob} editJob={editJob} compact={false} />
           </div>
         );
