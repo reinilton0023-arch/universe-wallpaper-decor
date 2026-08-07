@@ -36,6 +36,19 @@ function cleanList(value) {
   return Array.isArray(value) ? value.filter((item) => item && typeof item.id === "string") : [];
 }
 
+function isAuthorized(request, env) {
+  const configuredPin = String(env.ADMIN_PIN || "");
+  const suppliedPin = request.headers.get("X-Admin-Pin") || "";
+  return configuredPin.length > 0 && suppliedPin === configuredPin;
+}
+
+export async function onRequestPost({ request, env }) {
+  if (!isAuthorized(request, env)) {
+    return jsonResponse({ ok: false, error: "Invalid administrator PIN." }, 401);
+  }
+  return jsonResponse({ ok: true });
+}
+
 export async function onRequestGet({ env }) {
   if (!env.DB) {
     return jsonResponse({ error: "D1 binding DB is not configured." }, 503);
@@ -57,6 +70,10 @@ export async function onRequestGet({ env }) {
 export async function onRequestPut({ request, env }) {
   if (!env.DB) {
     return jsonResponse({ error: "D1 binding DB is not configured." }, 503);
+  }
+
+  if (!isAuthorized(request, env)) {
+    return jsonResponse({ error: "Administrator access required." }, 401);
   }
 
   const payload = await request.json();
