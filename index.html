@@ -232,6 +232,8 @@
         const [cloudReady, setCloudReady] = useState(false);
         const [cloudLoaded, setCloudLoaded] = useState(false);
         const [syncMessage, setSyncMessage] = useState("Saved on this device");
+        const [adminPin, setAdminPin] = useState("");
+        const [isAdmin, setIsAdmin] = useState(false);
         const [activeTab, setActiveTab] = useState("home");
         const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeekMonday(todayISO()));
         const [financeStart, setFinanceStart] = useState(() => startOfWeekMonday(todayISO()));
@@ -287,14 +289,6 @@
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedData));
               }
 
-              if (mergedHasData && (dataChanged(mergedData, cloudData) || (!cloudHasData && localHasData))) {
-                await fetch("./api/data", {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(mergedData)
-                });
-              }
-
               if (!cancelled) {
                 setCloudReady(true);
                 setSyncMessage("Cloud sync on");
@@ -316,25 +310,49 @@
         }, []);
 
         useEffect(() => {
-          if (!cloudLoaded || !cloudReady) return;
+          if (!cloudLoaded || !cloudReady || !isAdmin || !adminPin) return;
           setSyncMessage("Saving...");
           const saveTimer = setTimeout(async () => {
             try {
               const response = await fetch("./api/data", {
                 method: "PUT",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", "X-Admin-Pin": adminPin },
                 body: JSON.stringify(data)
               });
               if (!response.ok) throw new Error("Could not save");
               setSyncMessage("Cloud sync on");
             } catch {
-              setSyncMessage("Saved on this device");
-              setCloudReady(false);
+              setSyncMessage("Administrator access required");
+              setIsAdmin(false);
+              setAdminPin("");
             }
           }, 600);
 
           return () => clearTimeout(saveTimer);
-        }, [data, cloudLoaded, cloudReady]);
+        }, [data, cloudLoaded, cloudReady, isAdmin, adminPin]);
+
+        async function unlockAdmin() {
+          const pin = window.prompt("Enter the 4-digit administrator PIN:");
+          if (pin === null) return;
+          try {
+            const response = await fetch("./api/data", {
+              method: "POST",
+              headers: { "X-Admin-Pin": pin }
+            });
+            if (!response.ok) throw new Error("Invalid PIN");
+            setAdminPin(pin);
+            setIsAdmin(true);
+            setSyncMessage("Admin unlocked");
+          } catch {
+            window.alert("Incorrect administrator PIN.");
+          }
+        }
+
+        function requireAdmin() {
+          if (isAdmin) return true;
+          window.alert("Administrator access is required to make changes.");
+          return false;
+        }
 
         useEffect(() => {
           if (!jobForm.clientId && data.clients.length > 0) {
@@ -421,6 +439,7 @@
 
         function addClient(event) {
           event.preventDefault();
+          if (!requireAdmin()) return;
           if (!clientForm.name.trim()) return;
           const client = { ...clientForm, id: crypto.randomUUID() };
           setData((current) => ({ ...current, clients: [client, ...current.clients] }));
@@ -428,6 +447,7 @@
         }
 
         function deleteClient(id) {
+          if (!requireAdmin()) return;
           const client = data.clients.find((item) => item.id === id);
           const linkedJobs = data.jobs.filter((job) => job.clientId === id).length;
           const message = linkedJobs > 0
@@ -455,6 +475,7 @@
 
         function addJob(event) {
           event.preventDefault();
+          if (!requireAdmin()) return;
           if (!jobForm.clientId || !jobForm.date || !jobForm.time) return;
 
           const shouldArchive = jobForm.status === "Completed" || jobForm.status === "Paid";
@@ -479,6 +500,7 @@
         }
 
         function updateJob(id, patch) {
+          if (!requireAdmin()) return;
           setData((current) => ({
             ...current,
             jobs: current.jobs.map((job) => {
@@ -494,11 +516,13 @@
         }
 
         function removeJob(id) {
+          if (!requireAdmin()) return;
           setData((current) => ({ ...current, jobs: current.jobs.filter((job) => job.id !== id) }));
           if (editingJobId === id) resetJobForm();
         }
 
         function editJob(job) {
+          if (!requireAdmin()) return;
           setEditingJobId(job.id);
           setJobForm({
             date: job.date || todayISO(),
@@ -550,7 +574,7 @@
                       <h1 className="text-2xl font-black text-ink sm:text-3xl">Universe Wallpaper & Decor</h1>
                     </div>
                   </div>
-                  <div className="grid gap-2 text-sm font-semibold text-slate-700 sm:grid-cols-2">
+                  <div className="grid gap-2 text-sm font-semibold text-slate-700 sm:grid-cols-3">
                     <div className="flex items-center justify-center gap-2 rounded-lg bg-cloud px-3 py-2">
                       <span>{activeScheduleJobs.length}</span>
                       <span>active jobs</span>
@@ -560,6 +584,12 @@
                     }`}>
                       {syncMessage}
                     </div>
+                    <button
+                      onClick={() => isAdmin ? (setIsAdmin(false), setAdminPin(""), setSyncMessage("View only")) : unlockAdmin()}
+                      className={`min-h-10 rounded-lg px-3 py-2 font-bold ${isAdmin ? "bg-emerald-700 text-white" : "bg-ink text-white"}`}
+                    >
+                      {isAdmin ? "Lock Admin" : "Admin"}
+                    </button>
                   </div>
                 </div>
                 <nav className="grid grid-cols-5 gap-1 rounded-xl bg-cloud p-1 sm:gap-2">
