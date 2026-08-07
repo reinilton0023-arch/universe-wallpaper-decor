@@ -422,12 +422,7 @@
 
         const activeScheduleJobs = sortedJobs.filter((job) => !isArchivedJob(job) && job.status !== "Canceled");
         const archivedJobs = sortedJobs.filter(isArchivedJob);
-        const homeWeekStart = startOfWeekMonday(todayISO());
-        const homeWeekEnd = addDays(homeWeekStart, 6);
-        const homeWeekDays = Array.from({ length: 7 }, (_, index) => addDays(homeWeekStart, index));
-        const homeWeekJobs = activeScheduleJobs.filter((job) => (
-          job.date >= homeWeekStart && job.date <= homeWeekEnd
-        ));
+        const todayJobs = activeScheduleJobs.filter((job) => job.date === todayISO());
 
         const weekEnd = addDays(selectedWeekStart, 6);
         const weekDays = Array.from({ length: 7 }, (_, index) => addDays(selectedWeekStart, index));
@@ -596,7 +591,7 @@
         }
 
         const tabs = [
-          ["home", "Week Jobs"],
+          ["home", "Today"],
           ["schedule", "Schedule"],
           ["new-job", "New Job"],
           ["clients", "Clients"],
@@ -656,8 +651,7 @@
             <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:px-8">
               {activeTab === "home" && (
                 <HomeScreen
-                  weekDays={homeWeekDays}
-                  weekJobs={homeWeekJobs}
+                  todayJobs={todayJobs}
                   clientsById={clientsById}
                   updateJob={updateJob}
                   editJob={editJob}
@@ -736,28 +730,11 @@
         );
       }
 
-      function HomeScreen({ weekDays, weekJobs, clientsById, updateJob, editJob }) {
+      function HomeScreen({ todayJobs, clientsById, updateJob, editJob }) {
         return (
-          <div className="grid gap-5">
-            <SectionTitle title="This Week" subtitle="Jobs organized from Monday to Sunday, with Maps access." />
-            {weekDays.map((day) => {
-              const dayJobs = weekJobs.filter((job) => job.date === day);
-              const isToday = day === todayISO();
-              return (
-                <section key={day} className={`grid gap-3 rounded-xl border p-4 ${isToday ? "border-ocean bg-ocean/5" : "border-slate-200 bg-white/60"}`}>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className={`text-xs font-black uppercase tracking-[0.16em] ${isToday ? "text-ocean" : "text-slate-500"}`}>
-                        {isToday ? "Today" : "Week day"}
-                      </p>
-                      <h2 className="text-xl font-black">{formatLongDate(day)}</h2>
-                    </div>
-                    <Pill tone={dayJobs.length ? "blue" : "slate"}>{dayJobs.length} job{dayJobs.length === 1 ? "" : "s"}</Pill>
-                  </div>
-                  <JobList jobs={dayJobs} clientsById={clientsById} updateJob={updateJob} editJob={editJob} compact={false} />
-                </section>
-              );
-            })}
+          <div className="grid gap-4">
+            <SectionTitle title="Today's Jobs" subtitle={`${formatLongDate(todayISO())} · ${todayJobs.length} job${todayJobs.length === 1 ? "" : "s"}`} />
+            <JobList jobs={todayJobs} clientsById={clientsById} updateJob={updateJob} editJob={editJob} compact={false} />
           </div>
         );
       }
