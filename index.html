@@ -275,19 +275,13 @@
               if (!response.ok) throw new Error("Cloud database is not ready");
 
               const cloudData = normalizeData(await response.json());
-              const localData = loadData();
-              const cloudHasData = cloudData.clients.length > 0 || cloudData.jobs.length > 0;
-              const localHasData = localData.clients.length > 0 || localData.jobs.length > 0;
-
               if (cancelled) return;
 
-              const mergedData = mergeData(localData, cloudData);
-              const mergedHasData = mergedData.clients.length > 0 || mergedData.jobs.length > 0;
-
-              if (mergedHasData) {
-                setData(mergedData);
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedData));
-              }
+              // Cloud data is authoritative on every phone, including when the
+              // administrator intentionally removes every record.
+              const sourceData = cloudData;
+              setData(sourceData);
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(sourceData));
 
               if (!cancelled) {
                 setCloudReady(true);
@@ -331,6 +325,39 @@
           return () => clearTimeout(saveTimer);
         }, [data, cloudLoaded, cloudReady, isAdmin, adminPin]);
 
+        useEffect(() => {
+          if (!cloudReady || isAdmin) return;
+          let stopped = false;
+
+          async function refreshFromCloud() {
+            try {
+              const response = await fetch(`./api/data?refresh=${Date.now()}`, { cache: "no-store" });
+              if (!response.ok) return;
+              const nextData = normalizeData(await response.json());
+              if (stopped) return;
+              setData(nextData);
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(nextData));
+              setSyncMessage("Cloud updated");
+            } catch {
+              // Keep the last available data while the phone is offline.
+            }
+          }
+
+          const refreshTimer = setInterval(refreshFromCloud, 10000);
+          const handleVisibility = () => {
+            if (document.visibilityState === "visible") refreshFromCloud();
+          };
+          window.addEventListener("focus", refreshFromCloud);
+          document.addEventListener("visibilitychange", handleVisibility);
+
+          return () => {
+            stopped = true;
+            clearInterval(refreshTimer);
+            window.removeEventListener("focus", refreshFromCloud);
+            document.removeEventListener("visibilitychange", handleVisibility);
+          };
+        }, [cloudReady, isAdmin]);
+
         async function unlockAdmin() {
           const pin = window.prompt("Enter the 4-digit administrator PIN:");
           if (pin === null) return;
@@ -346,6 +373,25 @@
           } catch {
             window.alert("Incorrect administrator PIN.");
           }
+        }
+
+        async function lockAdmin() {
+          try {
+            if (cloudReady && adminPin) {
+              const response = await fetch("./api/data", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json", "X-Admin-Pin": adminPin },
+                body: JSON.stringify(data)
+              });
+              if (!response.ok) throw new Error("Could not save");
+            }
+            setSyncMessage("Cloud updated");
+          } catch {
+            window.alert("The latest changes could not be saved. Please try again.");
+            return;
+          }
+          setIsAdmin(false);
+          setAdminPin("");
         }
 
         function requireAdmin() {
@@ -585,7 +631,7 @@
                       {syncMessage}
                     </div>
                     <button
-                      onClick={() => isAdmin ? (setIsAdmin(false), setAdminPin(""), setSyncMessage("View only")) : unlockAdmin()}
+                      onClick={() => isAdmin ? lockAdmin() : unlockAdmin()}
                       className={`min-h-10 rounded-lg px-3 py-2 font-bold ${isAdmin ? "bg-emerald-700 text-white" : "bg-ink text-white"}`}
                     >
                       {isAdmin ? "Lock Admin" : "Admin"}
